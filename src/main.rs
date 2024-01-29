@@ -1,7 +1,13 @@
 use std::cmp::Ordering;
 use std::fs::File;
+use std::path::Path;
+use std::process::exit;
 use pdbtbx::*;
 use polars::prelude::*;
+use clap::Parser;
+use colored::Colorize;
+
+const EXPOSED_ASA_THRESHOLD: f64 = 0.0; // Units is angstroms squared
 
 #[derive(Debug)]
 struct ASAData {
@@ -10,10 +16,16 @@ struct ASAData {
     residue_id: i32
 }
 
-#[derive(Debug)]
-struct DPXData {
-    dpx: f64,
-    residue_id: i32
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Path to the input PDB file
+    #[arg(short, long)]
+    input_path: String,
+
+    /// Path for the CSV to be created
+    #[arg(short, long)]
+    output_path: String,
 }
 
 fn distance(p1: &(f64, f64, f64), p2: &(f64, f64, f64)) -> f64 {
@@ -58,16 +70,20 @@ fn calculate_atomic_info_for_residue(residue: &Residue) -> (f64,(f64,f64,f64)) {
     return (format!("{:.2}", average_asa).parse().unwrap(), average_residue_position);
 }
 fn main() {
-    const EXPOSED_ASA_THRESHOLD: f64 = 0.0; // Units is angstroms squared
-    println!("WARNING: This program expects the B-factor field of the input PDB file to be the ASA/SASA of each residue. IF THIS IS NOT THE CASE THIS PROGRAM WILL NOT WORK.");
+    let args = Args::parse();
+
+    if Path::new(&args.input_path).exists() == false {
+        println!("{}",format!("ERROR: Input file ({}) does not exist",&args.input_path).red());
+        exit(1);
+    }
+    println!("{}", "WARNING: This program expects the B-factor field of the input PDB file to be the ASA/SASA of each residue. IF THIS IS NOT THE CASE THIS PROGRAM WILL NOT WORK.".yellow());
     let (mut pdb, _errors) = pdbtbx::open(
-        "./example.pdb",
+        args.input_path,
         StrictnessLevel::Medium
     ).unwrap();
 
     pdb.remove_atoms_by(|atom| atom.element() == Some(&Element::H)); // Remove all H atoms
-    use std::time::Instant;
-    let now = Instant::now();
+
     // First loop to build list of ASA values for each residue
     let mut asa_values : Vec<ASAData> = Vec::new();
     for residue in pdb.residues() { // Iterate over all residues in the structure
@@ -104,13 +120,12 @@ fn main() {
             dpx_values.push(0.0);
         }
     }
-    let elapsed = now.elapsed();
     let mut df: DataFrame = df!(
         "Residue ID" => &dpx_residue_ids,
         "DPX" => &dpx_values
     ).unwrap();
-    println!("{}", df);
-    let mut file = File::create("./output.csv").expect("could not create file");
+    let mut file = File::create(&args.output_path).expect("could not create file");
+    println!("{} {}", "Wrote output CSV to ".green(), &args.output_path);
     CsvWriter::new(&mut file)
         .include_header(true)
         .with_separator(b',')
