@@ -102,8 +102,6 @@ fn main() {
 
     pdb.remove_atoms_by(|atom| atom.element() == Some(&Element::H)); // Remove all H atoms
 
-    let tree = pdb.create_atom_rtree();
-
     // First loop to build list of ASA values for each residue
     let mut asa_values : Vec<ASAData> = Vec::new();
     for residue in pdb.residues() { // Iterate over all residues in the structure
