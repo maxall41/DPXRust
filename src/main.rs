@@ -100,7 +100,7 @@ fn main() {
     let mut dpx_values: Vec<f64> = vec![];
     for residue in pdb.residues() {
         let (average_asa,position) = calculate_atomic_info_for_residue(residue);
-        if average_asa < EXPOSED_ASA_THRESHOLD {
+        if average_asa <= EXPOSED_ASA_THRESHOLD {
             // Atom is not exposed
             sort_by_distance(&mut asa_values,position);
             for asa_value in &asa_values {
