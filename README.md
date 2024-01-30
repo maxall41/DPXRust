@@ -9,9 +9,14 @@ This is a rewrite of the DPX algorithm in Rust. DPX is an algorithm for computin
 
 Make sure that the SASA/ASA value for each atom is in the B-factor field before running DPXRust.
 
-Example:
+Output CSV Example:
 ```shell
-./DPXRust --input-path my_protein.pdb --output-path output.csv
+./DPXRust --input-path my_protein.pdb --csv-output-path output.csv
+```
+
+Output PDB Example (When outputting as PDB DPX values are saved in B-factor column):
+```shell
+./DPXRust --input-path my_protein.pdb --pdb-output-path output.csv
 ```
 
 Note: DPXRust also supports mmCIF files
