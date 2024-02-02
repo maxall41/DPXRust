@@ -7,7 +7,7 @@ This is a rewrite of the DPX algorithm in Rust. DPX is an algorithm for computin
 
 ## Usage
 
-Make sure that the SASA/ASA value for each atom is in the B-factor field before running DPXRust.
+Make sure that the SASA/ASA value for each atom is in the B-factor field before running DPXRust. We recommend generating SASA values with DSSP or Freesasa.
 
 Output CSV Example:
 ```shell
