@@ -1,18 +1,17 @@
+use clap::Parser;
+use colored::Colorize;
+use pdbtbx::*;
+use polars::prelude::*;
 use std::cmp::Ordering;
 use std::fs::File;
 use std::path::Path;
 use std::process::exit;
-use pdbtbx::*;
-use polars::prelude::*;
-use clap::Parser;
-use colored::Colorize;
-
 
 #[derive(Debug)]
 struct ASAData {
     asa: f64,
-    position: (f64,f64,f64),
-    residue_id: i32
+    position: (f64, f64, f64),
+    residue_id: i32,
 }
 
 #[derive(Parser, Debug)]
@@ -32,7 +31,7 @@ struct Args {
 
     ///  Exposed ASA Threshold - Defaults to 10 angstroms squared (absolute)
     #[arg(short, long)]
-    exposed_asa_threshold: Option<f64>
+    exposed_asa_threshold: Option<f64>,
 }
 
 // Calculate euclidean distance between points
@@ -44,7 +43,7 @@ fn distance(p1: &(f64, f64, f64), p2: &(f64, f64, f64)) -> f64 {
     let dy = y1 - y2;
     let dz = z1 - z2;
 
-    (dx*dx + dy*dy + dz*dz).sqrt()
+    (dx * dx + dy * dy + dz * dz).sqrt()
 }
 
 fn sort_by_distance(data: &mut Vec<ASAData>, reference_position: (f64, f64, f64)) {
@@ -62,9 +61,9 @@ fn sort_by_distance(data: &mut Vec<ASAData>, reference_position: (f64, f64, f64)
     });
 }
 
-fn calculate_atomic_info_for_residue(residue: &Residue) -> (f64,(f64,f64,f64)) {
+fn calculate_atomic_info_for_residue(residue: &Residue) -> (f64, (f64, f64, f64)) {
     let mut average_asa: f64 = 0.0;
-    let mut average_residue_position = (0.0,0.0,0.0);
+    let mut average_residue_position = (0.0, 0.0, 0.0);
     for atom in residue.atoms() {
         average_asa += atom.b_factor();
         average_residue_position.0 = average_residue_position.0 + atom.x();
@@ -75,41 +74,48 @@ fn calculate_atomic_info_for_residue(residue: &Residue) -> (f64,(f64,f64,f64)) {
     average_residue_position.0 = average_residue_position.0 / residue.atom_count() as f64;
     average_residue_position.1 = average_residue_position.1 / residue.atom_count() as f64;
     average_residue_position.2 = average_residue_position.2 / residue.atom_count() as f64;
-    return (format!("{:.2}", average_asa).parse().unwrap(), average_residue_position);
+    return (
+        format!("{:.2}", average_asa).parse().unwrap(),
+        average_residue_position,
+    );
 }
 fn main() {
     let args = Args::parse();
 
     let mut exposed_asa_threshold = 10.0;
 
-    if args.exposed_asa_threshold.is_some() {
-        exposed_asa_threshold = args.exposed_asa_threshold.unwrap();
+    if let Some(in_exposed_asa_threshold) = args.exposed_asa_threshold {
+        exposed_asa_threshold = in_exposed_asa_threshold;
     }
 
     if Path::new(&args.input_path).exists() == false {
-        println!("{}",format!("ERROR: Input file ({}) does not exist",&args.input_path).red());
+        println!(
+            "{}",
+            format!("ERROR: Input file ({}) does not exist", &args.input_path).red()
+        );
         exit(1);
     }
     println!("{}", "WARNING: This program expects the B-factor field of the input PDB file to be the ASA/SASA of each residue. IF THIS IS NOT THE CASE THIS PROGRAM WILL NOT WORK.".yellow());
-    let (mut pdb, _errors) = pdbtbx::open(
-        args.input_path,
-        StrictnessLevel::Loose
-    ).unwrap();
+    let (mut pdb, _errors) = pdbtbx::open(args.input_path, StrictnessLevel::Loose).unwrap();
     if args.csv_output_path.is_none() && args.pdb_output_path.is_none() {
-        println!("{}","You must specify --pdb-output-path and or --csv-output-path".red());
+        println!(
+            "{}",
+            "You must specify --pdb-output-path and or --csv-output-path".red()
+        );
         exit(1);
     }
 
     pdb.remove_atoms_by(|atom| atom.element() == Some(&Element::H)); // Remove all H atoms
 
     // First loop to build list of ASA values for each residue
-    let mut asa_values : Vec<ASAData> = Vec::new();
-    for residue in pdb.residues() { // Iterate over all residues in the structure
+    let mut asa_values: Vec<ASAData> = Vec::new();
+    for residue in pdb.residues() {
+        // Iterate over all residues in the structure
         let (average_asa, position) = calculate_atomic_info_for_residue(residue);
         let data = ASAData {
             asa: average_asa,
             residue_id: residue.id().0 as i32,
-            position
+            position,
         };
         asa_values.push(data);
     }
@@ -117,13 +123,13 @@ fn main() {
     let mut dpx_residue_ids: Vec<i32> = vec![];
     let mut dpx_values: Vec<f64> = vec![];
     for residue in pdb.residues_mut() {
-        let (average_asa,position) = calculate_atomic_info_for_residue(residue);
+        let (average_asa, position) = calculate_atomic_info_for_residue(residue);
         if average_asa <= exposed_asa_threshold {
             // Atom is not exposed
-            sort_by_distance(&mut asa_values,position);
+            sort_by_distance(&mut asa_values, position);
             for asa_value in &asa_values {
                 if asa_value.residue_id == residue.id().0 as i32 {
-                    continue
+                    continue;
                 }
                 if asa_value.asa > exposed_asa_threshold {
                     let dpx = distance(&position, &asa_value.position);
@@ -134,7 +140,7 @@ fn main() {
                             atom.set_b_factor(dpx).unwrap();
                         }
                     }
-                    break
+                    break;
                 }
             }
         } else {
@@ -151,19 +157,28 @@ fn main() {
     if args.pdb_output_path.is_some() {
         let pdb_path = args.pdb_output_path.unwrap();
         pdbtbx::save(&pdb, &pdb_path, pdbtbx::StrictnessLevel::Loose).unwrap();
-        println!("{}", format!("Wrote output PDB to {} - DPX Values are saved in B-factor column",pdb_path).green());
+        println!(
+            "{}",
+            format!(
+                "Wrote output PDB to {} - DPX Values are saved in B-factor column",
+                pdb_path
+            )
+            .green()
+        );
     }
     if args.csv_output_path.is_some() {
         let csv_path = args.csv_output_path.unwrap();
         let mut df: DataFrame = df!(
             "Residue ID" => &dpx_residue_ids,
             "DPX" => &dpx_values
-        ).unwrap();
+        )
+        .unwrap();
         let mut file = File::create(&csv_path).expect("could not create file");
         CsvWriter::new(&mut file)
             .include_header(true)
             .with_separator(b',')
-            .finish(&mut df).unwrap();
+            .finish(&mut df)
+            .unwrap();
         println!("{} {}", "Wrote output CSV to ".green(), &csv_path);
     }
 }
