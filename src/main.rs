@@ -154,8 +154,7 @@ fn main() {
             }
         }
     }
-    if args.pdb_output_path.is_some() {
-        let pdb_path = args.pdb_output_path.unwrap();
+    if let Some(pdb_path) = args.pdb_output_path {
         pdbtbx::save(&pdb, &pdb_path, pdbtbx::StrictnessLevel::Loose).unwrap();
         println!(
             "{}",
@@ -166,8 +165,7 @@ fn main() {
             .green()
         );
     }
-    if args.csv_output_path.is_some() {
-        let csv_path = args.csv_output_path.unwrap();
+    if let Some(csv_path) = args.csv_output_path {
         let mut df: DataFrame = df!(
             "Residue ID" => &dpx_residue_ids,
             "DPX" => &dpx_values
