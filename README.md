@@ -16,7 +16,7 @@ Output CSV Example:
 
 Output PDB Example (When outputting as PDB DPX values are saved in B-factor column):
 ```shell
-./DPXRust --input-path my_protein.pdb --pdb-output-path output.csv
+./DPXRust --input-path my_protein.pdb --pdb-output-path output.pdb
 ```
 
 Note: DPXRust also supports mmCIF files
