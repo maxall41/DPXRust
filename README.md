@@ -3,7 +3,7 @@
 ![Image of protein (3ZYZ) that has been run through DPXRust](example.png)
 *Image of 3ZYZ after being run through DPXRust colorized by DPX value*
 
-This is a rewrite of the DPX algorithm in Rust. DPX is an algorithm for computing a score that indicates to what degree an atom is buried in a protein structure by finding the distance between every atom and the nearest atom with an ASA/SASA above a threshold (Defaults to 150.0 Angstroms squared) [1].
+This is a rewrite of the DPX algorithm in Rust. DPX is an algorithm for computing a score that indicates to what degree an atom is buried in a protein structure by finding the distance between every atom and the nearest atom with an ASA/SASA above a threshold (Defaults to 10.0 normalized Angstroms squared) [1].
 
 ## Usage
 
