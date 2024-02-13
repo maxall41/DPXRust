@@ -1,7 +1,10 @@
 use clap::Parser;
 use colored::Colorize;
+use nalgebra::{Point3, Vector3};
 use pdbtbx::*;
 use polars::prelude::*;
+use rust_sasa::calculate_sasa;
+use rust_sasa::Atom as SasaAtom;
 use std::cmp::Ordering;
 use std::fs::File;
 use std::path::Path;
@@ -32,6 +35,14 @@ struct Args {
     ///  Exposed ASA Threshold - Defaults to 10 angstroms squared (absolute)
     #[arg(short, long)]
     exposed_asa_threshold: Option<f64>,
+
+    ///  Exposed ASA Threshold - Defaults to 10 angstroms squared (absolute)
+    #[arg(short, long)]
+    use_custom_sasa: Option<bool>,
+
+    ///  Exagerate generated DPX values by multiplying by factor
+    #[arg(short, long)]
+    factor: Option<f64>,
 }
 
 // Calculate euclidean distance between points
@@ -50,7 +61,6 @@ fn sort_by_distance(data: &mut Vec<ASAData>, reference_position: (f64, f64, f64)
     data.sort_unstable_by(|a, b| {
         let da = distance(&a.position, &reference_position);
         let db = distance(&b.position, &reference_position);
-
         if da < db {
             Ordering::Less
         } else if da > db {
@@ -61,16 +71,41 @@ fn sort_by_distance(data: &mut Vec<ASAData>, reference_position: (f64, f64, f64)
     });
 }
 
-fn calculate_atomic_info_for_residue(residue: &Residue) -> (f64, (f64, f64, f64)) {
+fn asa_borrowed(asa_data: &[ASAData]) -> Vec<f64> {
+    asa_data.iter().map(|p| p.asa).collect()
+}
+
+fn calculate_atomic_info_for_residue(
+    residue: &Residue,
+    in_sasa: &Option<Vec<f32>>,
+) -> (f64, (f64, f64, f64)) {
     let mut average_asa: f64 = 0.0;
     let mut average_residue_position = (0.0, 0.0, 0.0);
-    for atom in residue.atoms() {
-        average_asa += atom.b_factor();
-        average_residue_position.0 = average_residue_position.0 + atom.x();
-        average_residue_position.1 = average_residue_position.1 + atom.y();
-        average_residue_position.2 = average_residue_position.2 + atom.z();
+    let mut i = 0;
+    let use_b_factor = in_sasa.is_none();
+    if use_b_factor == false {
+        let sasa = in_sasa.as_ref().unwrap();
+        for atom in residue.atoms() {
+            let id = atom.serial_number();
+            average_asa += sasa[id - 1] as f64;
+            //println!("{}, {:?}", i, average_asa);
+            average_residue_position.0 = average_residue_position.0 + atom.x();
+            average_residue_position.1 = average_residue_position.1 + atom.y();
+            average_residue_position.2 = average_residue_position.2 + atom.z();
+            i += 1
+        }
+    } else {
+        for atom in residue.atoms() {
+            average_asa += atom.b_factor();
+            average_residue_position.0 = average_residue_position.0 + atom.x();
+            average_residue_position.1 = average_residue_position.1 + atom.y();
+            average_residue_position.2 = average_residue_position.2 + atom.z();
+            i += 1
+        }
     }
+
     average_asa = average_asa / residue.atom_count() as f64;
+    //println!("{:?}", average_asa);
     average_residue_position.0 = average_residue_position.0 / residue.atom_count() as f64;
     average_residue_position.1 = average_residue_position.1 / residue.atom_count() as f64;
     average_residue_position.2 = average_residue_position.2 / residue.atom_count() as f64;
@@ -82,10 +117,15 @@ fn calculate_atomic_info_for_residue(residue: &Residue) -> (f64, (f64, f64, f64)
 fn main() {
     let args = Args::parse();
 
-    let mut exposed_asa_threshold = 10.0;
+    let mut exposed_asa_threshold = 10.0; // Note this value is not absolute exposed angstroms squared but instead a angstroms squared normalized for atom count per residue.
+    let mut use_custom_sasa = false;
 
     if let Some(in_exposed_asa_threshold) = args.exposed_asa_threshold {
         exposed_asa_threshold = in_exposed_asa_threshold;
+    }
+    if args.use_custom_sasa.is_some() {
+        println!("{}", "WARNING: You have enabled custom SASA specification. Custom SASA is expected to be provided in B-factor field of the input PDB file to be the ASA/SASA of each residue. IF THIS IS NOT THE CASE THIS PROGRAM WILL NOT WORK.".yellow());
+        use_custom_sasa = true;
     }
 
     if Path::new(&args.input_path).exists() == false {
@@ -95,7 +135,7 @@ fn main() {
         );
         exit(1);
     }
-    println!("{}", "WARNING: This program expects the B-factor field of the input PDB file to be the ASA/SASA of each residue. IF THIS IS NOT THE CASE THIS PROGRAM WILL NOT WORK.".yellow());
+
     let (mut pdb, _errors) = pdbtbx::open(args.input_path, StrictnessLevel::Loose).unwrap();
     if args.csv_output_path.is_none() && args.pdb_output_path.is_none() {
         println!(
@@ -107,11 +147,34 @@ fn main() {
 
     pdb.remove_atoms_by(|atom| atom.element() == Some(&Element::H)); // Remove all H atoms
 
+    // Generate SASA values
+    let mut sasa: Option<Vec<f32>> = None;
+    if use_custom_sasa == false {
+        let mut atoms = vec![];
+        for atom in pdb.atoms() {
+            atoms.push(SasaAtom {
+                position: Point3::new(
+                    atom.pos().0 as f32,
+                    atom.pos().1 as f32,
+                    atom.pos().2 as f32,
+                ),
+                radius: atom
+                    .element()
+                    .unwrap()
+                    .atomic_radius()
+                    .van_der_waals
+                    .unwrap() as f32,
+                id: atom.serial_number(),
+            })
+        }
+        sasa = Some(calculate_sasa(&atoms, None, None));
+    }
+
     // First loop to build list of ASA values for each residue
     let mut asa_values: Vec<ASAData> = Vec::new();
     for residue in pdb.residues() {
         // Iterate over all residues in the structure
-        let (average_asa, position) = calculate_atomic_info_for_residue(residue);
+        let (average_asa, position) = calculate_atomic_info_for_residue(residue, &sasa);
         let data = ASAData {
             asa: average_asa,
             residue_id: residue.id().0 as i32,
@@ -122,8 +185,9 @@ fn main() {
     // Second loop to generate DPX values for each residue
     let mut dpx_residue_ids: Vec<i32> = vec![];
     let mut dpx_values: Vec<f64> = vec![];
+    let sasa_values: Vec<f64> = asa_borrowed(&asa_values);
     for residue in pdb.residues_mut() {
-        let (average_asa, position) = calculate_atomic_info_for_residue(residue);
+        let (average_asa, position) = calculate_atomic_info_for_residue(residue, &sasa);
         if average_asa <= exposed_asa_threshold {
             // Atom is not exposed
             sort_by_distance(&mut asa_values, position);
@@ -132,7 +196,10 @@ fn main() {
                     continue;
                 }
                 if asa_value.asa > exposed_asa_threshold {
-                    let dpx = distance(&position, &asa_value.position);
+                    let mut dpx = distance(&position, &asa_value.position);
+                    if args.factor.is_some() {
+                        dpx = dpx * args.factor.unwrap();
+                    }
                     dpx_residue_ids.push(residue.id().0 as i32);
                     dpx_values.push(dpx);
                     if args.pdb_output_path.is_some() {
@@ -168,7 +235,8 @@ fn main() {
     if let Some(csv_path) = args.csv_output_path {
         let mut df: DataFrame = df!(
             "Residue ID" => &dpx_residue_ids,
-            "DPX" => &dpx_values
+            "DPX" => &dpx_values,
+            "SASA" => &sasa_values
         )
         .unwrap();
         let mut file = File::create(&csv_path).expect("could not create file");
