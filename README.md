@@ -17,7 +17,7 @@ Output PDB Example (When outputting as PDB DPX values are saved in B-factor colu
 ./DPXRust --input-path my_protein.pdb --pdb-output-path output.pdb
 ```
 
-Since version 1.1.0 DPXRust automaticlly generates SASA values for input proteins. But if you want to provide your own custom SASA values then you can add the SASA value for each atom to the B-factor field of the input file.
+Since version 1.1.0 DPXRust automaticlly generates SASA values for input proteins. But if you want to provide your own custom SASA values then you can add the SASA value for each atom to the B-factor field of the input file and then use the CLI argument `--use-custom-sasa`.
 
 Note: DPXRust also supports mmCIF files
 
