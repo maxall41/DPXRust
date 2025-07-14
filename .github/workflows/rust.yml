@@ -78,16 +78,16 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-24.04
-            name: rust-sasa-linux-gnu-x86_64
+            name: DPXRust-linux-gnu-x86_64
           - target: x86_64-pc-windows-msvc
             os: windows-2025
-            name: rust-sasa-windows-x86_64.exe
+            name: DPXRust-windows-x86_64.exe
           - target: aarch64-apple-darwin
             os: macos-15
-            name: rust-sasa-aarch64-apple-darwin
+            name: DPXRust-aarch64-apple-darwin
           - target: x86_64-apple-darwin
             os: macos-15
-            name: rust-sasa-x86_64-apple-darwin
+            name: DPXRust-x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -106,11 +106,11 @@ jobs:
       - name: Copy  binary (Unix)
         if: matrix.os != 'windows-2025'
         run: |
-          cp target/${{ matrix.target }}/release/rust-sasa ${{ matrix.name }}
+          cp target/${{ matrix.target }}/release/DPXRust ${{ matrix.name }}
       - name: Copy binary (Windows)
         if: matrix.os == 'windows-2025'
         run: |
-          copy target\${{ matrix.target }}\release\rust-sasa.exe ${{ matrix.name }}
+          copy target\${{ matrix.target }}\release\DPXRust.exe ${{ matrix.name }}
         shell: cmd
 
       - name: Upload binary artifact
@@ -136,7 +136,7 @@ jobs:
       - name: Prepare release files
         run: |
           mkdir -p ./release
-          find ./artifacts -name "rust-sasa-*" -type f -exec cp {} ./release/ \;
+          find ./artifacts -name "DPXRust-*" -type f -exec cp {} ./release/ \;
           ls -la ./release/
       - name: Create Release
         uses: softprops/action-gh-release@v2
