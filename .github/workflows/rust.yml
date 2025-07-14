@@ -101,7 +101,7 @@ jobs:
 
       - name: Build binary
         run: |
-          cargo build --target ${{ matrix.target }}
+          cargo build --release --target ${{ matrix.target }}
 
       - name: Copy  binary (Unix)
         if: matrix.os != 'windows-2025'
