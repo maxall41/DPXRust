@@ -1,10 +1,12 @@
+use clap::builder::styling::{AnsiColor, Effects};
+use clap::builder::Styles;
 use clap::Parser;
 use colored::Colorize;
-use nalgebra::{Point3, Vector3};
+use nalgebra::Point3;
 use pdbtbx::*;
 use polars::prelude::*;
-use rust_sasa::calculate_sasa;
-use rust_sasa::Atom as SasaAtom;
+use rust_sasa::options::SASAOptions;
+use rust_sasa::{Atom as SasaAtom, AtomLevel};
 use std::cmp::Ordering;
 use std::fs::File;
 use std::path::Path;
@@ -17,8 +19,16 @@ struct ASAData {
     residue_id: i32,
 }
 
+fn styles() -> Styles {
+    Styles::styled()
+        .header(AnsiColor::Green.on_default() | Effects::BOLD)
+        .usage(AnsiColor::Green.on_default() | Effects::BOLD)
+        .literal(AnsiColor::BrightCyan.on_default() | Effects::BOLD)
+        .placeholder(AnsiColor::BrightBlue.on_default())
+}
+
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version, about, long_about = None, styles = styles())]
 struct Args {
     /// Path to the input PDB file
     #[arg(short, long)]
@@ -36,7 +46,7 @@ struct Args {
     #[arg(short, long)]
     exposed_asa_threshold: Option<f64>,
 
-    ///  Exposed ASA Threshold - Defaults to 10 angstroms squared (absolute)
+    ///  Wether to use custom SASA from input B factor column or to use built-in SASA calculator.
     #[arg(short, long)]
     use_custom_sasa: Option<bool>,
 
@@ -81,7 +91,7 @@ fn calculate_atomic_info_for_residue(
 ) -> (f64, (f64, f64, f64)) {
     let mut average_asa: f64 = 0.0;
     let mut average_residue_position = (0.0, 0.0, 0.0);
-    let mut i = 0;
+
     let use_b_factor = in_sasa.is_none();
     if use_b_factor == false {
         let sasa = in_sasa.as_ref().unwrap();
@@ -92,7 +102,6 @@ fn calculate_atomic_info_for_residue(
             average_residue_position.0 = average_residue_position.0 + atom.x();
             average_residue_position.1 = average_residue_position.1 + atom.y();
             average_residue_position.2 = average_residue_position.2 + atom.z();
-            i += 1
         }
     } else {
         for atom in residue.atoms() {
@@ -100,15 +109,15 @@ fn calculate_atomic_info_for_residue(
             average_residue_position.0 = average_residue_position.0 + atom.x();
             average_residue_position.1 = average_residue_position.1 + atom.y();
             average_residue_position.2 = average_residue_position.2 + atom.z();
-            i += 1
         }
     }
 
     average_asa = average_asa / residue.atom_count() as f64;
-    //println!("{:?}", average_asa);
+
     average_residue_position.0 = average_residue_position.0 / residue.atom_count() as f64;
     average_residue_position.1 = average_residue_position.1 / residue.atom_count() as f64;
     average_residue_position.2 = average_residue_position.2 / residue.atom_count() as f64;
+
     return (
         format!("{:.2}", average_asa).parse().unwrap(),
         average_residue_position,
@@ -136,7 +145,7 @@ fn main() {
         exit(1);
     }
 
-    let (mut pdb, _errors) = pdbtbx::open(args.input_path, StrictnessLevel::Loose).unwrap();
+    let (mut pdb, _errors) = pdbtbx::open(args.input_path).unwrap();
     if args.csv_output_path.is_none() && args.pdb_output_path.is_none() {
         println!(
             "{}",
@@ -165,9 +174,10 @@ fn main() {
                     .van_der_waals
                     .unwrap() as f32,
                 id: atom.serial_number(),
+                parent_id: None,
             })
         }
-        sasa = Some(calculate_sasa(&atoms, None, None));
+        sasa = Some(SASAOptions::<AtomLevel>::new().process(&pdb).unwrap());
     }
 
     // First loop to build list of ASA values for each residue
