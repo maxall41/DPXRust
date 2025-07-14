@@ -67,7 +67,7 @@ fn distance(p1: &(f64, f64, f64), p2: &(f64, f64, f64)) -> f64 {
     (dx * dx + dy * dy + dz * dz).sqrt()
 }
 
-fn sort_by_distance(data: &mut Vec<ASAData>, reference_position: (f64, f64, f64)) {
+fn sort_by_distance(data: &mut [ASAData], reference_position: (f64, f64, f64)) {
     data.sort_unstable_by(|a, b| {
         let da = distance(&a.position, &reference_position);
         let db = distance(&b.position, &reference_position);
@@ -93,35 +93,35 @@ fn calculate_atomic_info_for_residue(
     let mut average_residue_position = (0.0, 0.0, 0.0);
 
     let use_b_factor = in_sasa.is_none();
-    if use_b_factor == false {
+    if !use_b_factor {
         let sasa = in_sasa.as_ref().unwrap();
         for atom in residue.atoms() {
             let id = atom.serial_number();
             average_asa += sasa[id - 1] as f64;
             //println!("{}, {:?}", i, average_asa);
-            average_residue_position.0 = average_residue_position.0 + atom.x();
-            average_residue_position.1 = average_residue_position.1 + atom.y();
-            average_residue_position.2 = average_residue_position.2 + atom.z();
+            average_residue_position.0 += atom.x();
+            average_residue_position.1 += atom.y();
+            average_residue_position.2 += atom.z();
         }
     } else {
         for atom in residue.atoms() {
             average_asa += atom.b_factor();
-            average_residue_position.0 = average_residue_position.0 + atom.x();
-            average_residue_position.1 = average_residue_position.1 + atom.y();
-            average_residue_position.2 = average_residue_position.2 + atom.z();
+            average_residue_position.0 += atom.x();
+            average_residue_position.1 += atom.y();
+            average_residue_position.2 += atom.z();
         }
     }
 
-    average_asa = average_asa / residue.atom_count() as f64;
+    average_asa /= residue.atom_count() as f64;
 
-    average_residue_position.0 = average_residue_position.0 / residue.atom_count() as f64;
-    average_residue_position.1 = average_residue_position.1 / residue.atom_count() as f64;
-    average_residue_position.2 = average_residue_position.2 / residue.atom_count() as f64;
+    average_residue_position.0 /= residue.atom_count() as f64;
+    average_residue_position.1 /= residue.atom_count() as f64;
+    average_residue_position.2 /= residue.atom_count() as f64;
 
-    return (
-        format!("{:.2}", average_asa).parse().unwrap(),
+    (
+        format!("{average_asa:.2}").parse().unwrap(),
         average_residue_position,
-    );
+    )
 }
 fn main() {
     let args = Args::parse();
@@ -137,7 +137,7 @@ fn main() {
         use_custom_sasa = true;
     }
 
-    if Path::new(&args.input_path).exists() == false {
+    if !Path::new(&args.input_path).exists() {
         println!(
             "{}",
             format!("ERROR: Input file ({}) does not exist", &args.input_path).red()
@@ -158,7 +158,7 @@ fn main() {
 
     // Generate SASA values
     let mut sasa: Option<Vec<f32>> = None;
-    if use_custom_sasa == false {
+    if !use_custom_sasa {
         let mut atoms = vec![];
         for atom in pdb.atoms() {
             atoms.push(SasaAtom {
@@ -208,7 +208,7 @@ fn main() {
                 if asa_value.asa > exposed_asa_threshold {
                     let mut dpx = distance(&position, &asa_value.position);
                     if args.factor.is_some() {
-                        dpx = dpx * args.factor.unwrap();
+                        dpx *= args.factor.unwrap();
                     }
                     dpx_residue_ids.push(residue.id().0 as i32);
                     dpx_values.push(dpx);
@@ -235,11 +235,8 @@ fn main() {
         pdbtbx::save(&pdb, &pdb_path, pdbtbx::StrictnessLevel::Loose).unwrap();
         println!(
             "{}",
-            format!(
-                "Wrote output PDB to {} - DPX Values are saved in B-factor column",
-                pdb_path
-            )
-            .green()
+            format!("Wrote output PDB to {pdb_path} - DPX Values are saved in B-factor column")
+                .green()
         );
     }
     if let Some(csv_path) = args.csv_output_path {
