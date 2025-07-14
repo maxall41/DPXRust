@@ -71,7 +71,7 @@ jobs:
         run: RUSTFLAGS=-Awarnings cargo test --verbose
 
   build:
-    name: Build PGO optimized binaries
+    name: Build binaries
     needs: [quality, test]
     strategy:
       matrix:
@@ -101,7 +101,7 @@ jobs:
 
       - name: Build binary
         run: |
-          cargo build -- --target ${{ matrix.target }}
+          cargo build --target ${{ matrix.target }}
 
       - name: Copy  binary (Unix)
         if: matrix.os != 'windows-2025'
